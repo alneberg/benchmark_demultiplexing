@@ -1,80 +1,84 @@
 #!/usr/bin/env python3
 """A script that will run benchmark with a some certain thread parameters on a given directory."""
 import argparse
+import datetime
 import os
 import subprocess
 import time
 import logging
 
+from rich.logging import RichHandler
 import yaml
 import psutil
 
-CMD = "sleep 10"
+CMD = "sleep 20"
 
 # Setup logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s', handlers=[RichHandler()])
 
 
 class Run(object):
-    def __init__(self, run_name, config_dict):
+    def __init__(self, run_name, config_dict, outdir, clone):
         self.name = run_name
         self.timestamp = time.strftime("%Y%m%d-%H%M%S")
-        self.stats_output_dir = os.path.join(os.getcwd(), f'{run_name}_{self.timestamp}')
+        self.clone = clone # clone number
+
+        # Directories
+        self.run_parent_dir = os.path.join(outdir, run_name)
+        self.run_output_dir = os.path.join(outdir, run_name, self.timestamp)
+        self.command_output_dir = os.path.join(outdir, run_name, 'command_output')
+        # Files
+        self.time_output = os.path.join(outdir, run_name, self.timestamp, 'time_output.txt')
+        self.parent_exitcode_f = os.path.join(outdir, run_name, 'exitcode.txt')
+        self.exitcode_f = os.path.join(outdir, run_name, self.timestamp, 'exitcode.txt')
+        self.stats_f = os.path.join(outdir, run_name, self.timestamp, 'stats.yaml')
         self.config = config_dict
+        self.parallel_runs = config_dict['parallel_runs']
+
         self.pid = None
         self.subprocess_p = None
         self.psutil_p = None
+        self.stats = None
+        self.returncode = None
+        
+
+    def setup_directories(self):
+        # output directory inside run dir
+        os.makedirs(self.run_output_dir, exist_ok=True)
+
+        # command output directory inside output directory
+        os.makedirs(self.command_output_dir, exist_ok=True)
+
 
     def already_run(self):
         """Will check if the run has an exitcode file. If it does, it has already been run."""
-        logging.info(f'Checking if run {self.name} has already been run.')
-        pass
+
+        if os.path.exists(self.parent_exitcode_f):
+            return True
+        else:
+            return False
 
     def cleanup_output(self):
         """Remove all the fastq and such, but keep the exitcode file"""
         logging.info(f'Cleaning up output for run {self.name}')
-        pass
+        if os.path.exists(self.command_output_dir):
+            os.rmdir(self.command_output_dir)
 
-    def run_it(self):
-        """Triggers the command to run and iteratively records the stats."""
-        logging.info(f'Running run {self.name}')
+    def end_iteration(self):
+        logging.info(f'Process has terminated with returncode {self.returncode}')
+        with open(self.exitcode_f, 'w') as f:
+            f.write(str(self.returncode))
+        logging.info(f"Wrote exitcode to file {self.exitcode_f}")
+        with open(self.parent_exitcode_f, 'w') as f:
+            f.write(str(self.returncode))
+        logging.info(f"Wrote exitcode to file {self.parent_exitcode_f}")
 
-        self.subp_p = subprocess.Popen(CMD.split(' '))
-        self.pid = self.subp_p.pid
+        with open(self.stats_f, 'w') as f:
+            yaml.safe_dump(self.stats, f)
 
-        self.psutil_p = psutil.Process(self.pid)
-
-        stats = []
-        iteration = 0
-        zombie_found = False
-        while True:
-            # Collect system wide metrics
-            stats.append(self._collect_stats_iteration())
-
-            if (iteration != 0) and (iteration % 2 == 0):
-                logging.info(f'Run {self.name} still running after {iteration} iterations.')
-
-            # Sleep so that we don't collect too many stats
-            time.sleep(args.sampling_rate)
-            iteration += 1
-
-            # Check if iteration should end
-            returncode = self.subp_p.poll()
-            if returncode is not None or zombie_found:
-                print(f'Process has terminated with returncode {returncode}')
-                exitcode_file = os.path.join(self.stats_output_dir, 'exitcode.txt')
-                with open(exitcode_file, 'w') as f:
-                    f.write(str(returncode))
-                print(stats)
-                break
-
-    def _collect_stats_iteration(self):
+    def collect_stats_iteration(self):
         stats_d = {}
         try:
-            with self.psutil_p.oneshot():
-                stats_d['system_cpu_percent'] = psutil.cpu_percent()
-                stats_d['system_memory_full_info'] = psutil.virtual_memory()
-
             # Collect process specific metrics
             with self.psutil_p.oneshot():
                 stats_d['process_cpu_percent'] = self.psutil_p.cpu_percent()
@@ -86,6 +90,60 @@ class Run(object):
         return stats_d
 
 
+def collect_system_stats():
+    stats_d = {}
+    stats_d['system_cpu_percent'] = psutil.cpu_percent()
+    memory_full = psutil.virtual_memory()
+    stats_d['system_memory_percent'] = memory_full.percent
+    stats_d['system_memory_available'] = memory_full.available
+    stats_d['system_memory_total'] = memory_full.total
+    return stats_d
+
+def run_parallel(parent_name, runs, sampling_rate, log_per_iterations):
+    """Runs a list of runs in parallel. Make sure the runs have different names"""
+    logging.info(f'Starting {len(runs)} runs of parent: {parent_name}')
+    for run in runs:
+        run.subp_p = subprocess.Popen(['time', '-o', f'{run.time_output}'] + CMD.split(' '))
+        run.pid = run.subp_p.pid
+
+        run.psutil_p = psutil.Process(run.pid)
+
+        run.stats = {}
+
+    iteration = 0
+    while True:
+        # Collect system wide metrics
+        timestamp = datetime.datetime.now().isoformat()
+        sys_stats = collect_system_stats()
+        for run in runs:
+            # merge sys_stats dictionary with the returning dictionary
+            run.stats[timestamp] = sys_stats | run.collect_stats_iteration()
+
+            if (iteration != 0) and (iteration % log_per_iterations == 0):
+                logging.info(f'Run {run.name} still running after {iteration} iterations.')
+
+        # Sleep so that we don't collect too many stats
+        time.sleep(sampling_rate)
+        iteration += 1
+
+
+
+        for run in runs:
+            if run.returncode is not None:
+                continue
+
+            # Check if iteration should end
+            returncode = run.subp_p.poll()
+            if returncode is not None:
+                run.returncode = returncode
+                run.end_iteration()
+
+        # if all run.returncode are not None, then all processes have terminated
+        all_terminated = all([run.returncode is not None for run in runs])
+        if all_terminated:
+            logging.info(f'All runs of parent: {parent_name} have finished.')
+            return
+
 def main(args):
     # Read in the yaml config
     with open(args.run_parameter_file, 'r') as conf_fh:
@@ -93,19 +151,38 @@ def main(args):
 
     runs = config['runs']
 
-    # For each run
-    for run_d in runs:
-        run = Run(run_d['name'], run_d)
-        # Check if it has already been run
-        if run.already_run():
-            # cleanup the old run
-            run.cleanup_output()
-            continue
+    if args.develop:
+        sampling_rate = 1
+        log_per_iterations = 5
+    else:
+        sampling_rate = 60
+        log_per_iterations = 5
 
-        # Run it and wait for it to finish
-        run.run_it()
-        # clean up the old run
-        run.cleanup_output()
+    # For each run
+    runs_per_parent = {}
+    for run_d in runs:
+        parent_run_name = run_d['name']
+
+        runs_per_parent[parent_run_name] = []
+        for i in range(run_d['parallel_runs']):
+            run = Run(run_d['name'] + f'_clone{i}', run_d, args.output_dir, clone=i)
+            run.setup_directories()
+            runs_per_parent[parent_run_name].append(run)
+
+        # Check if it has already been run
+        if not all([run.already_run() for run in runs_per_parent[parent_run_name]]):
+            # Run it and wait for it to finish
+            if run_d['parallel_runs'] == 1:
+                logging.info(f'Running run with name {run.name}')
+            else:
+                logging.info(f'Running {run_d["parallel_runs"]} runs with parent name {parent_run_name}')
+            run_parallel(parent_run_name, runs_per_parent[parent_run_name], sampling_rate, log_per_iterations)
+        else:
+            logging.info(f'Run {run.name} has already been run. Skipping.')
+
+        # clean up the old run or the new one
+        for run in runs_per_parent[parent_run_name]:
+            run.cleanup_output()
 
 
 if __name__ == '__main__':
@@ -113,6 +190,6 @@ if __name__ == '__main__':
     parser.add_argument('input_dir', help='The directory containing the bcl files.')
     parser.add_argument('run_parameter_file', help='The file containing the run parameters.')
     parser.add_argument('output_dir', help='The directory to output the stats and fastq files to.')
-    parser.add_argument('--sampling_rate', type=int, default=1, help='The sampling rate in seconds.')
+    parser.add_argument('--develop', action="store_true", help='Whether to run in development mode. Affects the sampling rate and logging of iterations')
     args = parser.parse_args()
     main(args)
