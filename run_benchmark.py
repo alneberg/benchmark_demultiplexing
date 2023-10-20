@@ -11,14 +11,12 @@ from rich.logging import RichHandler
 import yaml
 import psutil
 
-CMD = "sleep 20"
-
 # Setup logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s', handlers=[RichHandler()])
+logging.basicConfig(level=logging.INFO, format='%(message)s', handlers=[RichHandler()])
 
 
 class Run(object):
-    def __init__(self, run_name, config_dict, outdir, clone):
+    def __init__(self, run_name, config_dict, outdir, clone, root_cmd):
         self.name = run_name
         self.timestamp = time.strftime("%Y%m%d-%H%M%S")
         self.clone = clone # clone number
@@ -33,14 +31,29 @@ class Run(object):
         self.exitcode_f = os.path.join(outdir, run_name, self.timestamp, 'exitcode.txt')
         self.stats_f = os.path.join(outdir, run_name, self.timestamp, 'stats.yaml')
         self.config = config_dict
+        self.threads_reading = config_dict['threads_reading']
+        self.threads_processing = config_dict['threads_processing']
+        self.threads_writing = config_dict['threads_writing']
         self.parallel_runs = config_dict['parallel_runs']
+        self.root_cmd = root_cmd
+        self.command = self.generate_command()
 
         self.pid = None
         self.subprocess_p = None
         self.psutil_p = None
         self.stats = None
         self.returncode = None
-        
+
+    def generate_command(self):
+        """Generates the command to run the benchmark"""
+        try:
+            command = self.root_cmd.format(**self.__dict__)
+        except KeyError as e:
+            logging.error(f'Could not generate command for run {self.name}')
+            logging.error(e)
+            raise
+        logging.info(f"Set up command: {command}")
+        return command
 
     def setup_directories(self):
         # output directory inside run dir
@@ -102,8 +115,9 @@ def collect_system_stats():
 def run_parallel(parent_name, runs, sampling_rate, log_per_iterations):
     """Runs a list of runs in parallel. Make sure the runs have different names"""
     logging.info(f'Starting {len(runs)} runs of parent: {parent_name}')
+    import pdb; pdb.set_trace()
     for run in runs:
-        run.subp_p = subprocess.Popen(['time', '-o', f'{run.time_output}'] + CMD.split(' '))
+        run.subp_p = subprocess.Popen(['time', '-o', f'{run.time_output}'] + run.command.split(' '))
         run.pid = run.subp_p.pid
 
         run.psutil_p = psutil.Process(run.pid)
@@ -144,7 +158,7 @@ def run_parallel(parent_name, runs, sampling_rate, log_per_iterations):
             logging.info(f'All runs of parent: {parent_name} have finished.')
             return
 
-def main(args):
+def main(args, root_cmd):
     # Read in the yaml config
     with open(args.run_parameter_file, 'r') as conf_fh:
         config = yaml.safe_load(conf_fh)
@@ -165,7 +179,7 @@ def main(args):
 
         runs_per_parent[parent_run_name] = []
         for i in range(run_d['parallel_runs']):
-            run = Run(run_d['name'] + f'_clone{i}', run_d, args.output_dir, clone=i)
+            run = Run(run_d['name'] + f'_clone{i}', run_d, args.output_dir, clone=i, root_cmd=root_cmd)
             run.setup_directories()
             runs_per_parent[parent_run_name].append(run)
 
@@ -192,4 +206,10 @@ if __name__ == '__main__':
     parser.add_argument('output_dir', help='The directory to output the stats and fastq files to.')
     parser.add_argument('--develop', action="store_true", help='Whether to run in development mode. Affects the sampling rate and logging of iterations')
     args = parser.parse_args()
-    main(args)
+
+    if args.develop:
+        ROOT_CMD = "sleep {time_to_sleep}"
+    else:
+        ROOT_CMD = "/home/hiseq.bioinfo/src/bcl2fastq_v2.20.0.422/bin/bcl2fastq --output-dir {run_output_dir} --loading-threads {threads_reading} --processing-threads {threads_processing} --writing-threads {threads_writing} --create-fastq-for-index-reads --no-lane-splitting --sample-sheet /srv/ngi_data/sequencing/NovaSeqXPlus/nosync/20231018_LH00217_0017_A225J2CLT3/SampleSheet_1.csv --use-bases-mask 4:Y85N66,I10N9,I10,Y133N18 --use-bases-mask 5:Y85N66,I10N9,I10,Y133N18"
+
+    main(args, ROOT_CMD)

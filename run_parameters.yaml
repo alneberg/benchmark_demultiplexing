@@ -1,0 +1,65 @@
+base_command:
+  - f"python3 {path_to_script}/main.py"
+runs:
+  - name: "run_1_4_1_1"
+    threads_reading: 1
+    threads_processing: 4
+    threads_writing: 1
+    parallel_runs: 1
+  - name: "run_1_6_1_1"
+    threads_reading: 1
+    threads_processing: 6
+    threads_writing: 1
+    parallel_runs: 1
+  - name: "run_1_8_1_1"
+    threads_reading: 1
+    threads_processing: 8
+    threads_writing: 1
+    parallel_runs: 1
+  - name: "run_1_12_1_1"
+    threads_reading: 1
+    threads_processing: 12
+    threads_writing: 1
+    parallel_runs: 1
+# Investigate parallel runs
+  - name: "run_1_4_1_2"
+    threads_reading: 1
+    threads_processing: 4
+    threads_writing: 1
+    parallel_runs: 2
+  - name: "run_1_12_1_2"
+    threads_reading: 1
+    threads_processing: 12
+    threads_writing: 1
+    parallel_runs: 2
+  - name: "run_1_4_1_4"
+    threads_reading: 1
+    threads_processing: 4
+    threads_writing: 1
+    parallel_runs: 4
+  - name: "run_1_12_1_4"
+    threads_reading: 1
+    threads_processing: 12
+    threads_writing: 1
+    parallel_runs: 4
+# Investigate reading and writing threads
+  - name: "run_2_4_2_1"
+    threads_reading: 2
+    threads_processing: 4
+    threads_writing: 2
+    parallel_runs: 1
+  - name: "run_2_12_2_1"
+    threads_reading: 2
+    threads_processing: 12
+    threads_writing: 2
+    parallel_runs: 1
+  - name: "run_3_4_3_1"
+    threads_reading: 3
+    threads_processing: 4
+    threads_writing: 3
+    parallel_runs: 1
+  - name: "run_3_12_3_1"
+    threads_reading: 3
+    threads_processing: 12
+    threads_writing: 3
+    parallel_runs: 1
