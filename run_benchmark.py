@@ -117,7 +117,7 @@ def collect_system_stats():
 def run_parallel(parent_name, runs, sampling_rate, log_per_iterations):
     """Runs a list of runs in parallel. Make sure the runs have different names"""
     logging.info(f'Starting {len(runs)} runs of parent: {parent_name}')
-    import pdb; pdb.set_trace()
+
     for run in runs:
         run.subp_p = subprocess.Popen(['time', '-o', f'{run.time_output}'] + run.command.split(' '))
         run.pid = run.subp_p.pid
