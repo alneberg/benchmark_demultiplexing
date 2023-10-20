@@ -211,6 +211,6 @@ if __name__ == '__main__':
     if args.develop:
         ROOT_CMD = "sleep {time_to_sleep}"
     else:
-        ROOT_CMD = "/home/hiseq.bioinfo/src/bcl2fastq_v2.20.0.422/bin/bcl2fastq --output-dir {run_output_dir} --loading-threads {threads_reading} --processing-threads {threads_processing} --writing-threads {threads_writing} --create-fastq-for-index-reads --no-lane-splitting --sample-sheet /srv/ngi_data/sequencing/NovaSeqXPlus/nosync/20231018_LH00217_0017_A225J2CLT3/SampleSheet_1.csv --use-bases-mask 4:Y85N66,I10N9,I10,Y133N18 --use-bases-mask 5:Y85N66,I10N9,I10,Y133N18"
+        ROOT_CMD = "/home/hiseq.bioinfo/src/bcl2fastq_v2.20.0.422/bin/bcl2fastq --output-dir {command_output_dir} --loading-threads {threads_reading} --processing-threads {threads_processing} --writing-threads {threads_writing} --create-fastq-for-index-reads --no-lane-splitting --sample-sheet /srv/ngi_data/sequencing/NovaSeqXPlus/nosync/20231018_LH00217_0017_A225J2CLT3/SampleSheet_1.csv --use-bases-mask 4:Y85N66,I10N9,I10,Y133N18 --use-bases-mask 5:Y85N66,I10N9,I10,Y133N18 2> {run_output_dir}/stderr.txt > {run_output_dir}/stdout.txt"
 
     main(args, ROOT_CMD)
