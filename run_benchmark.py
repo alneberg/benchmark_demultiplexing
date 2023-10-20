@@ -35,6 +35,7 @@ class Run(object):
         self.threads_processing = config_dict['threads_processing']
         self.threads_writing = config_dict['threads_writing']
         self.parallel_runs = config_dict['parallel_runs']
+        self.time_to_sleep = 10
         self.root_cmd = root_cmd
         self.command = self.generate_command()
 
@@ -95,6 +96,7 @@ class Run(object):
             # Collect process specific metrics
             with self.psutil_p.oneshot():
                 stats_d['process_cpu_percent'] = self.psutil_p.cpu_percent()
+                stats_d['process_memory_percent'] = self.psutil_p.memory_percent()
         # Warnings and not an error since these seem to happen when the process has been finished
         except psutil.ZombieProcess:
             logging.warning(f'Process {self.pid} is a zombie.')
@@ -201,7 +203,6 @@ def main(args, root_cmd):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('input_dir', help='The directory containing the bcl files.')
     parser.add_argument('run_parameter_file', help='The file containing the run parameters.')
     parser.add_argument('output_dir', help='The directory to output the stats and fastq files to.')
     parser.add_argument('--develop', action="store_true", help='Whether to run in development mode. Affects the sampling rate and logging of iterations')
