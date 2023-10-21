@@ -123,8 +123,9 @@ def run_parallel(parent_name, runs, sampling_rate, log_per_iterations):
         import subprocess
 
         with open(f'{run.run_output_dir}/stdout.txt', 'w') as stdout_file, open(f'{run.run_output_dir}/stderr.txt', 'w') as stderr_file:
-            run.subp_p = subprocess.Popen(['time', '-o', run.time_output] + run.command.split(' '), stdout=stdout_file, stderr=stderr_file)
+            run.subp_p = subprocess.Popen(run.command.split(' '), stdout=stdout_file, stderr=stderr_file)
         run.pid = run.subp_p.pid
+        logging.info(f'Run started with pid {run.pid}')
 
         run.psutil_p = psutil.Process(run.pid)
 
@@ -156,6 +157,7 @@ def run_parallel(parent_name, runs, sampling_rate, log_per_iterations):
             returncode = run.subp_p.poll()
             if returncode is not None:
                 run.returncode = returncode
+                logging.info(f'Run {run.name} has finished. Writing exitcode and stats.yaml')
                 run.end_iteration()
 
         # if all run.returncode are not None, then all processes have terminated
@@ -175,8 +177,8 @@ def main(args, root_cmd):
         sampling_rate = 1
         log_per_iterations = 5
     else:
-        sampling_rate = 60
-        log_per_iterations = 5
+        sampling_rate = 10
+        log_per_iterations = 20
 
     # For each run
     runs_per_parent = {}
