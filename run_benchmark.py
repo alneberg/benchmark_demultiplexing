@@ -3,6 +3,7 @@
 import argparse
 import datetime
 import os
+import shutil
 import subprocess
 import time
 import logging
@@ -74,9 +75,9 @@ class Run(object):
 
     def cleanup_output(self):
         """Remove all the fastq and such, but keep the exitcode file"""
-        logging.info(f'Cleaning up output for run {self.name}')
+        logging.info(f'Cleaning up output for run {self.name}, deleting {self.command_output_dir}')
         if os.path.exists(self.command_output_dir):
-            os.rmdir(self.command_output_dir)
+            shutil.rmtree(self.command_output_dir)
 
     def end_iteration(self):
         logging.info(f'Process has terminated with returncode {self.returncode}')
